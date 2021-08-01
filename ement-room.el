@@ -1710,7 +1710,7 @@ For use as a `help-echo' function on `ement-user' headings."
   "Download and show images in messages, avatars, etc."
   :type 'boolean
   :set (lambda (option value)
-         (if (fboundp 'imagemagick-types)
+         (if (fboundp 'imagemagick-filter-types)
              (set-default option value)
            (set-default option nil)
            (when value

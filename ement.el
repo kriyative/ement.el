@@ -122,6 +122,10 @@ Writes the session file when Emacs is killed."
 Run with one argument, the session synced."
   :type 'hook)
 
+(defcustom ement-uri-proxy nil
+  "Optional proxy API requests via this URI"
+  :type 'string)
+
 ;;;; Commands
 
 ;;;###autoload
@@ -156,7 +160,7 @@ session and log in again."
     (let* ((username (match-string 1 user-id))
            (server-name (match-string 2 user-id))
            ;; TODO: Also return port, and actually use that port elsewhere.
-           (uri-prefix (ement--hostname-uri server-name))
+           (uri-prefix (or ement-uri-proxy (ement--hostname-uri server-name)))
            (user (make-ement-user :id user-id :username username :room-display-names (make-hash-table)))
            ;; FIXME: Dynamic port.
            (server (make-ement-server :name server-name :port 443 :uri-prefix uri-prefix))

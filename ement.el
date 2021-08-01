@@ -167,26 +167,26 @@ session and log in again."
            ;; A new session with a new token should be able to start over with a transaction ID of 0.
            (transaction-id 0)
            (session (make-ement-session :user user :server server :transaction-id transaction-id)))
-      (cl-labels ((flows-callback
-                   (data) (if (cl-loop for flow across (map-elt data 'flows)
-                                       thereis (equal (map-elt flow 'type) "m.login.password"))
-                              (progn
-                                (message "Ement: Logging in with password...")
-                                (password-login))
-                            (error "Matrix server doesn't support m.login.password login flow.  Supported flows: %s"
-                                   (cl-loop for flow in (map-elt data 'flows)
-                                            collect (map-elt flow 'type)))))
-                  (password-login
-                   () (pcase-let* (((cl-struct ement-session user token device-id initial-device-display-name) session)
-                                   ((cl-struct ement-user id) user)
-                                   (data (ement-alist "type" "m.login.password"
-                                                      "user" id
-                                                      "password" password
-                                                      "device_id" device-id
-                                                      "initial_device_display_name" initial-device-display-name)))
-                        ;; TODO: Clear password in callback (if we decide to hold on to it for retrying login timeouts).
-                        (ement-api server token "login" (apply-partially #'ement--login-callback session)
-                          :data (json-encode data) :method 'post))))
+      (cl-labels ((flows-callback (data)
+                    (if (cl-loop for flow across (map-elt data 'flows)
+                                 thereis (equal (map-elt flow 'type) "m.login.password"))
+                        (progn
+                          (message "Ement: Logging in with password...")
+                          (password-login))
+                        (error "Matrix server doesn't support m.login.password login flow.  Supported flows: %s"
+                               (cl-loop for flow in (map-elt data 'flows)
+                                        collect (map-elt flow 'type)))))
+                  (password-login ()
+                    (pcase-let* (((cl-struct ement-session user token device-id initial-device-display-name) session)
+                                 ((cl-struct ement-user id) user)
+                                 (data (ement-alist "type" "m.login.password"
+                                                    "user" id
+                                                    "password" password
+                                                    "device_id" device-id
+                                                    "initial_device_display_name" initial-device-display-name)))
+                                ;; TODO: Clear password in callback (if we decide to hold on to it for retrying login timeouts).
+                                (ement-api server token "login" (apply-partially #'ement--login-callback session)
+                                           :data (json-encode data) :method 'post))))
         ;; Verify that the m.login.password flow is supported.
         (when (ement-api server nil "login" #'flows-callback)
           (message "Ement: Checking server's login flows..."))))))

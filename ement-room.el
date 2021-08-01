@@ -340,6 +340,11 @@ When disabled, the room's buffer will remain open, but
 Matrix-related commands in it will fail."
   :type 'boolean)
 
+(defcustom ement-formatted-body-formatter-function nil
+  "Format function which converts source body text to HTML
+  formatted text."
+  :type 'function)
+
 ;;;; Macros
 
 (defmacro ement-room-with-typing (&rest body)
@@ -617,6 +622,50 @@ sync requests."
       (view-mode)
       (pop-to-buffer (current-buffer)))))
 
+(defun ement-room-send-message-primordial (session room body &optional reply-p)
+  (let ((formatted-body (when ement-formatted-body-formatter-function
+                          (funcall ement-formatted-body-formatter-function body))))
+    (unless (string-empty-p body)
+      (pcase-let* (((cl-struct ement-session server token) session)
+                   ((cl-struct ement-room id) room)
+                   (endpoint (format "rooms/%s/send/%s/%s"
+                                     (url-hexify-string id)
+                                     "m.room.message"
+                                     (apply 'concat
+                                            (mapcar 'prin1-to-string
+                                                    (current-time)))))
+                   (data (ement-alist "msgtype" "m.text"
+                                      "body" body)))
+        (when formatted-body
+          (setq data (append data
+                             (ement-alist
+                              "formatted_body" formatted-body
+                              "format" "org.matrix.custom.html"))))
+        (when reply-p
+          (setf data (ement-room--add-reply data reply-p)))
+        (ement-api server token endpoint
+          (lambda (&rest args)
+            (message "SEND MESSAGE CALLBACK: %S" args))
+          :else (lambda (&rest args)
+                  (message "SEND MESSAGE ELSE: %S" args))
+          :data (json-encode data)
+          :method 'put)))))
+
+(defun ement-room-send-message-send ()
+  (interactive)
+  (let ((body (buffer-substring-no-properties (point-min) (point-max))))
+    (ement-room-send-message-primordial ement-session
+                                        ement-room
+                                        body
+                                        ement-room-replying-to-event)
+    (delete-region (point-min) (point-max))
+    (quit-window)))
+
+(defun ement-room-send-message-cancel ()
+  (interactive)
+  (delete-region (point-min) (point-max))
+  (quit-window))
+
 (cl-defun ement-room-send-message (&key (prompt "Send message"))
   "Send message in current buffer's room.
 PROMPT should not end in a colon or space, as these will be
@@ -624,22 +673,20 @@ automatically added after the room ID."
   (interactive)
   (cl-assert ement-room) (cl-assert ement-session)
   (ement-room-with-typing
-    (let* ((prompt (format "%s (%s): " prompt (ement-room-display-name ement-room)))
-           (body (read-string prompt)))
-      (unless (string-empty-p body)
-        (pcase-let* (((cl-struct ement-session server token) ement-session)
-                     ((cl-struct ement-room id) ement-room)
-                     (endpoint (format "rooms/%s/send/%s/%s" (url-hexify-string id)
-                                       "m.room.message" (cl-incf (ement-session-transaction-id ement-session))))
-                     (data (ement-alist "msgtype" "m.text"
-                                        "body" body)))
-          (when ement-room-replying-to-event
-            (setf data (ement-room--add-reply data ement-room-replying-to-event)))
-          (ement-api server token endpoint
-            (lambda (&rest args)
-              (message "SEND MESSAGE CALLBACK: %S" args))
-            :data (json-encode data)
-            :method 'put)))))
+    (let ((buf (get-buffer-create
+                (format "*Ement Compose: %s*"
+                        (ement-room-display-name ement-room))))
+          (local-ement-session ement-session)
+          (local-ement-room ement-room)
+          (local-ement-room-replying-to-event ement-room-replying-to-event))
+      (with-current-buffer buf
+        (local-set-key (kbd "\C-c \C-c") 'ement-room-send-message-send)
+        (local-set-key (kbd "\C-c \C-k") 'ement-room-send-message-cancel)
+        (setq-local ement-session local-ement-session
+                    ement-room local-ement-room
+                    ement-room-replying-to-event local-ement-room-replying-to-event)
+        (pop-to-buffer buf)
+        (message "Press C-c C-c to send, C-c C-k to cancel"))))
   (ement-room-scroll-up-mark-read))
 
 (defun ement-room-edit-message ()

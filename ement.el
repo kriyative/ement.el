@@ -126,6 +126,21 @@ Run with one argument, the session synced."
   "Optional proxy API requests via this URI"
   :type 'string)
 
+(defun ement--read-password (user host)
+  (let* ((found (when (fboundp 'auth-source-search)
+                  (first (auth-source-search
+                          :user user
+                          :host host
+                          :max 1
+                          :require '(:secret))))))
+    (or (let ((secret (plist-get found :secret)))
+          (if (functionp secret)
+              (funcall secret)
+            secret))
+        (password-read
+         (format "Matrix password for %s:" user)
+         (concat "matrix:" user ":" host)))))
+
 ;;;; Commands
 
 ;;;###autoload
@@ -140,8 +155,7 @@ session and log in again."
                    ;; Session available: use it.
                    nil
                  ;; Read username and password.
-                 (list (read-string "User ID: ")
-                       (read-passwd "Password: "))))
+                 (list (read-string "User ID: "))))
   (if (not user-id)
       ;; Use saved session.
       (if-let ((saved-session (ement--read-session)))
@@ -159,6 +173,7 @@ session and log in again."
       (user-error "Invalid user ID format: use @USERNAME:SERVER"))
     (let* ((username (match-string 1 user-id))
            (server-name (match-string 2 user-id))
+           (password (ement--read-password user-id server-name))
            ;; TODO: Also return port, and actually use that port elsewhere.
            (uri-prefix (or ement-uri-proxy (ement--hostname-uri server-name)))
            (user (make-ement-user :id user-id :username username :room-display-names (make-hash-table)))
